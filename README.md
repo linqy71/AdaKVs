@@ -33,47 +33,17 @@ liburing installation is needed. Use an SSD-backed offload directory.
 ## Run
 
 ```bash
-python -m flexllmgen.flex_opt --adakvs \
-  --model facebook/opt-30b --path /path/to/opt_weights \
-  --tokenizer-path /path/to/tokenizer --offload-dir /path/to/ssd/offload \
-  --prefix-file document.txt \
-  --suffix ' Question: What is the topic? Answer:' \
-  --suffix ' Question: What is the conclusion? Answer:' \
-  --gpu-batch-size 1 --num-gpu-batches 1 --gen-len 1 \
-  --percent 100 0 100 0 100 0 \
-  --max-length 8192 --position-weights /path/to/position_weights \
-  --adakvs-retention .25 --adakvs-cache-gib 1
+bash scripts/run_adakvs.sh
 ```
-
-`--path` contains the original `opt-30b-np/` weight directory. The retained
-extended-context implementation requires a position table of shape
-`(max_length + 2, input_dim)`. Supply it with `--position-weights`; otherwise
-the runtime looks for `decoder.et_embed_positions.weight` in the weight
-directory. For a standard checkpoint context, set `--max-length 2048` and
-point `--position-weights` to its original `decoder.embed_positions.weight`.
-The code does not synthesize extended position weights.
 
 The runner first builds the shared prefix, then uses the first real suffix
 to establish the initial layout. Subsequent requests reuse stored KV. Every
 request finishes calibration and submits layout maintenance before the next
 request. Maintenance is synchronous by default (`KVSTORE_REORDER_SYNC=1`);
 the retained asynchronous worker can be selected with `KVSTORE_REORDER_SYNC=0`.
-Each run owns a temporary session inside the offload directory and cleans it
-up on exit.
 
-This release follows the existing OPT online-correction path: one unpadded
-request, one fixed shared prefix, and **one generated token per request**.
 It requires GPU attention and uncompressed weights/KV. Weight offloading is
 retained; for example, `--percent 0 100 100 0 100 0` places weights on CPU.
-GPU cache percentages must be `100 0`. Growing conversation histories and
-additional model adapters are outside this release.
-
-Reference settings are retention .25, 1 GiB payload cache, PQ m=2/bits=6,
-correction alpha=.2/beta=.5, prefill query chunks of 1024, merge budget .15,
-and 8-KiB cold blocks. The cache admits selected KV, accounts for actual
-payload bytes and covers hot, warm and cold regions. Thread counts and
-`KVSTORE_READ_BPS` remain runtime controls; the runner imposes no bandwidth
-cap. Set them explicitly when comparing environments.
 
 `scripts/run_adakvs.sh` provides the same entry using environment variables
 for local paths. Core files are `flexllmgen/retrieval_opt_adakvs.py`,
@@ -81,20 +51,26 @@ for local paths. Core files are `flexllmgen/retrieval_opt_adakvs.py`,
 `pq_online_correction.py`, `retrieval_workspace.py`, `metadata_manage.py`,
 `hot_growth.py`, and the two libraries under `library/`.
 
-## Basic checks
+## Performance test
+
+`test_single_prefix.sh` measures TTFT and KV I/O time for requests sharing one
+LongBench context. The script contains paths from the development machine;
+**set the following paths for your own environment before running it**:
 
 ```bash
-python scripts/test_adakvs.py
-python scripts/test_adakvs.py --require-cuda --work-dir /path/to/ssd/tmp
+export WEIGHT_PATH=/path/to/opt_weights
+export TOKENIZER_PATH=/path/to/tokenizer
+export LONGBENCH_FILE=/path/to/narrativeqa.jsonl
+export OFFLOAD_ROOT=/path/to/ssd/offload
+export OUTPUT_ROOT=/path/to/test_results
+
+MODELS=opt-30b PREFIX_INDEX=0 MAX_REQUESTS=10 bash test_single_prefix.sh
 ```
 
-The checks need no pretrained model or dataset. They cover PQ metadata and
-calibration, direct Tensor output, immutable cold backing, frozen hot tokens,
-cache quotas, and the retained native access-control tests. A tiny OPT model
-with locally generated weights exercises shared-prefix reuse on CUDA, both
-layer grouping modes, and CPU weight offload. CUDA absence is an explicit
-skip unless `--require-cuda` is supplied. These are functional checks, not a
-claim of performance equivalence or reproduction of published latency.
+`WEIGHT_PATH` is the parent of the model's `opt-30b-np/` directory.
+`OFFLOAD_ROOT` must be a writable SSD directory; `OUTPUT_ROOT` stores logs
+and timing results.
+
 
 ---
 
