@@ -1,18 +1,14 @@
 # AdaKVs on FlexLLMGen
 
-AdaKVs adds shared-prefix KV reuse to the FlexLLMGen OPT runtime. This branch
-retains the implemented PQ selection, online calibration, guarded hot growth,
-hybrid SSD reader and access-control payload cache. The native `kvstore`
-PyTorch extension retains its Tensor interface, per-layer part0/part1 files,
-OpenMP readers, reusable I/O buffers, promotion snapshots and write limits.
-Prefix KV is scattered directly into reusable pinned host tensors and copied
+AdaKVs adds shared-prefix KV reuse to the FlexLLMGen runtime.
+<!-- Prefix KV is scattered directly into reusable pinned host tensors and copied
 to GPU through the original double-buffered workspace.
 
 The upstream FlexLLMGen files remain the foundation. The normal
 `python -m flexllmgen.flex_opt` path is retained; add `--adakvs` to select the
 AdaKVs runtime. Its OPT scheduler and attention implementation are migrated
 from the existing retrieval engine. Weight format and the six-value
-`--percent` convention remain compatible with FlexLLMGen.
+`--percent` convention remain compatible with FlexLLMGen. -->
 
 ## Install
 
