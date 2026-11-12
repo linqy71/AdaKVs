@@ -29,6 +29,7 @@ class OptConfig:
     layer_norm_eps: float = 0.00001
     pad_token_id: int = 1
     dtype: type = np.float16
+    position_weights_path: str = None
 
     def model_bytes(self):
         h = self.input_dim
@@ -123,6 +124,36 @@ def get_opt_config(name, **kwargs):
         raise ValueError(f"Invalid model name: {name}")
 
     return dataclasses.replace(config, **kwargs)
+
+
+def add_opt_context_arguments(parser):
+    parser.add_argument("--max-length", type=int, default=8192,
+                        help="OPT context budget including prompt and output.")
+    parser.add_argument("--position-weights", type=str,
+                        help="Extended NumPy position table; defaults to the "
+                             "checkpoint's decoder.et_embed_positions.weight.")
+
+
+def validate_opt_context_length(prompt_len, gen_len, max_length):
+    if not (1 < prompt_len and 1 <= gen_len
+            and prompt_len + gen_len <= max_length):
+        raise ValueError("Require prompt_len > 1, gen_len >= 1, "
+                         f"prompt_len + gen_len <= max_length ({max_length})")
+
+
+def get_opt_position_weight_path(config, path):
+    """Resolve and validate the table before allocating model weights."""
+    filename = os.path.abspath(os.path.expanduser(
+        getattr(config, "position_weights_path", None) or
+        os.path.join(path, "decoder.et_embed_positions.weight")))
+    if "_DUMMY_" not in filename:
+        expected = (config.max_seq_len + 2, config.input_dim)
+        actual = np.load(filename, mmap_mode="r", allow_pickle=False)
+        if actual.shape != expected or not np.issubdtype(actual.dtype, np.floating):
+            raise ValueError(f"Position weights {filename}: expected floating "
+                             f"table {expected}, got {actual.shape} {actual.dtype}. "
+                             "Use --position-weights with a table matching --max-length.")
+    return filename
 
 
 def download_opt_weights_old(model_name, path):

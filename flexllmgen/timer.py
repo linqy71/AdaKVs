@@ -15,7 +15,34 @@ class _Timer:
         # start-stop timestamp pairs
         self.start_times = []
         self.stop_times = []
-        self.costs = []
+        self._costs = []
+        self._cuda_pending = []
+        self._cuda_start = None
+
+    @property
+    def costs(self):
+        # Resolve only when results are consumed, normally after request sync.
+        for start, end in self._cuda_pending:
+            end.synchronize()
+            self._costs.append(start.elapsed_time(end) / 1000.0)
+        self._cuda_pending.clear()
+        return self._costs
+
+    def start_cuda(self, stream=None):
+        import torch
+        assert not self.started
+        self._cuda_start = torch.cuda.Event(enable_timing=True)
+        self._cuda_start.record(stream)
+        self.started = True
+
+    def stop_cuda(self, stream=None):
+        import torch
+        assert self.started and self._cuda_start is not None
+        end = torch.cuda.Event(enable_timing=True)
+        end.record(stream)
+        self._cuda_pending.append((self._cuda_start, end))
+        self._cuda_start = None
+        self.started = False
 
     def start(self, sync_func: Callable = None):
         """Start the timer."""
@@ -44,7 +71,9 @@ class _Timer:
         self.start_time = None
         self.start_times = []
         self.stop_times = []
-        self.costs = []
+        self._costs = []
+        self._cuda_pending = []
+        self._cuda_start = None
 
     def elapsed(self, mode: str = "average"):
         """Calculate the elapsed time."""

@@ -1177,6 +1177,9 @@ def get_test_inputs(prompt_len, num_prompts, tokenizer):
 
 
 def run_flexllmgen(args):
+    if getattr(args, "adakvs", False):
+        from flexllmgen.adakvs_cli import run
+        return run(args)
     print(f"<run_flexllmgen>: args.model: {args.model}")
     if args.model == "facebook/galactica-30b":
         tokenizer = AutoTokenizer.from_pretrained("facebook/galactica-30b", padding_side="left")
@@ -1273,6 +1276,8 @@ def run_flexllmgen(args):
 
 
 def add_parser_arguments(parser):
+    from flexllmgen.adakvs_cli import add_parser_arguments as add_adakvs_arguments
+    add_adakvs_arguments(parser)
     parser.add_argument("--model", type=str, default="facebook/opt-6.7b",
         help="The model name.")
     parser.add_argument("--path", type=str, default="~/opt_weights",

@@ -33,3 +33,9 @@ flexllmgen/apps/data_wrangle/core
 
 # tmp scripts
 today_job.sh
+
+# Native extension and package build outputs
+*.so
+build/
+dist/
+*.egg-info/
